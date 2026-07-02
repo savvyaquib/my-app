@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Event from "@/database/event.model";
+import { v2 as cloudinary } from "cloudinary";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,6 +18,32 @@ export async function POST(req: NextRequest) {
     ) {
       const formData = await req.formData();
       const eventData = Object.fromEntries(formData.entries());
+
+      const file = formData.get('image') as File;
+
+      if (!file) return NextResponse.json({ message: "Image is required" }, { status: 400 });
+
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Upload to Cloudinary using upload_stream wrapped in a Promise
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'DevEvent',
+            resource_type: 'auto',    // Automatically detect file type (image, video, etc.)
+          },
+          (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        ).end(buffer); // Send the buffer payload
+      });
+
+      event.image = (uploadResult as { secure_url: string }).secure_url;
 
       if (eventData.event) {
         try {
