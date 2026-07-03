@@ -2,13 +2,142 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Event from "@/database/event.model";
 import { v2 as cloudinary } from "cloudinary";
+import { randomUUID } from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+
+cloudinary.config({ secure: true });
+
+export const runtime = "nodejs";
+
+type EventPayload = Record<string, unknown>;
+
+type ResponseError = {
+  message?: string;
+  http_code?: number;
+  code?: number;
+  name?: string;
+};
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as ResponseError).message === "string"
+  ) {
+    return (error as ResponseError).message;
+  }
+
+  return "Unknown error";
+}
+
+function getErrorStatus(error: unknown) {
+  if (error instanceof Error && error.name === "ValidationError") {
+    return 400;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as ResponseError).code === 11000
+  ) {
+    return 409;
+  }
+
+  return 500;
+}
+
+function normalizeListField(event: EventPayload, key: "tags" | "agenda") {
+  const value = event[key];
+
+  if (typeof value !== "string") {
+    return;
+  }
+
+  try {
+    event[key] = JSON.parse(value);
+  } catch {
+    event[key] = value.split(",").map((item) => item.trim());
+  }
+}
+
+function getImageExtension(file: File) {
+  const extensionByType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+  };
+
+  return extensionByType[file.type] ?? "png";
+}
+
+async function saveImageLocally(file: File) {
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const uploadsDir = path.join(process.cwd(), "public", "uploads");
+  const fileName = `${randomUUID()}.${getImageExtension(file)}`;
+
+  await mkdir(uploadsDir, { recursive: true });
+  await writeFile(path.join(uploadsDir, fileName), buffer);
+
+  return `/uploads/${fileName}`;
+}
+
+async function uploadImage(file: File) {
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const uploadResult = await new Promise<{ secure_url?: string }>(
+    (resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          {
+            folder: "DevEvent",
+            resource_type: "image",
+          },
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(result ?? {});
+          },
+        )
+        .end(buffer);
+    },
+  );
+
+  if (!uploadResult.secure_url) {
+    throw new Error("Cloudinary upload did not return an image URL");
+  }
+
+  return uploadResult.secure_url;
+}
+
+async function getImageUrl(file: File) {
+  try {
+    return await uploadImage(file);
+  } catch (error) {
+    console.error("Error uploading event image to Cloudinary:", error);
+    return saveImageLocally(file);
+  }
+}
 
 export async function POST(req: NextRequest) {
-  try {
-    await dbConnect(); // Ensure the database connection is established
+  let event: EventPayload;
+  let imageFile: File | null = null;
 
+  try {
     const contentType = req.headers.get("content-type") || "";
-    let event: any = null;
 
     if (contentType.includes("application/json")) {
       event = await req.json();
@@ -18,41 +147,27 @@ export async function POST(req: NextRequest) {
     ) {
       const formData = await req.formData();
       const eventData = Object.fromEntries(formData.entries());
+      const imageEntry = eventData.image;
 
-      const file = formData.get('image') as File;
-
-      if (!file) return NextResponse.json({ message: "Image is required" }, { status: 400 });
-
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Upload to Cloudinary using upload_stream wrapped in a Promise
-      const uploadResult = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            folder: 'DevEvent',
-            resource_type: 'auto',    // Automatically detect file type (image, video, etc.)
-          },
-          (error, result) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve(result);
-            }
-          }
-        ).end(buffer); // Send the buffer payload
-      });
-
-      event.image = (uploadResult as { secure_url: string }).secure_url;
+      imageFile =
+        imageEntry instanceof File && imageEntry.size > 0 ? imageEntry : null;
 
       if (eventData.event) {
         try {
-          event = JSON.parse(eventData.event as string);
+          event = JSON.parse(eventData.event.toString());
         } catch (e) {
-          event = eventData;
+          console.error("Error parsing event data:", e);
+          return NextResponse.json(
+            {
+              message: "Event creation failed",
+              error: getErrorMessage(e),
+            },
+            { status: 400 },
+          );
         }
       } else {
-        event = eventData;
+        event = { ...eventData };
+        delete event.image;
       }
     } else {
       return NextResponse.json(
@@ -74,20 +189,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize tags and agenda if they are sent as strings instead of arrays
-    if (event.tags && typeof event.tags === "string") {
-      try {
-        event.tags = JSON.parse(event.tags);
-      } catch {
-        event.tags = event.tags.split(",").map((t: string) => t.trim());
-      }
+    if (!imageFile && typeof event.image !== "string") {
+      return NextResponse.json(
+        {
+          message: "Event creation failed",
+          error: "Image file or image URL is required",
+        },
+        { status: 400 },
+      );
     }
 
-    if (event.agenda && typeof event.agenda === "string") {
+    normalizeListField(event, "tags");
+    normalizeListField(event, "agenda");
+
+    await dbConnect();
+
+    if (imageFile) {
       try {
-        event.agenda = JSON.parse(event.agenda);
-      } catch {
-        event.agenda = event.agenda.split(",").map((a: string) => a.trim());
+        event.image = await getImageUrl(imageFile);
+      } catch (e) {
+        console.error("Error uploading event image:", e);
+        return NextResponse.json(
+          {
+            message: "Image upload failed",
+            error: getErrorMessage(e),
+          },
+          { status: 502 },
+        );
       }
     }
 
@@ -102,12 +230,14 @@ export async function POST(req: NextRequest) {
     );
   } catch (e) {
     console.error("Error creating event:", e);
+    const status = getErrorStatus(e);
+
     return NextResponse.json(
       {
         message: "Event creation failed",
-        error: e instanceof Error ? e.message : "Unknown error",
+        error: getErrorMessage(e),
       },
-      { status: 400 },
+      { status },
     );
   }
 }
