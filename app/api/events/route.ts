@@ -82,3 +82,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Event creation failed", error: error.message || "Unknown error" }, { status });
   }
 }
+
+export async function GET() {
+  try {
+    await dbConnect();
+    const events = await Event.find().sort({ createdAt: -1 });
+    return NextResponse.json({ message: "Events fetched successfully", events }, { status: 200 });
+  } catch (error: any) {
+    console.error("Error fetching events:", error);
+    return NextResponse.json({ error: error.message || "Unknown error" }, { status: 500 });
+  }
+}
