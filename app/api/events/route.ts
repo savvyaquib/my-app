@@ -2,242 +2,83 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Event from "@/database/event.model";
 import { v2 as cloudinary } from "cloudinary";
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 
 cloudinary.config({ secure: true });
 
 export const runtime = "nodejs";
 
-type EventPayload = Record<string, unknown>;
+async function uploadImageToCloudinary(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream(
+      { folder: "DevEvent", resource_type: "image" },
+      (error, result) => {
+        if (error || !result?.secure_url) {
+          reject(error || new Error("Cloudinary upload failed"));
+        } else {
+          resolve(result.secure_url);
+        }
+      }
+    ).end(buffer);
+  });
+}
 
-type ResponseError = {
-  message?: string;
-  http_code?: number;
-  code?: number;
-  name?: string;
+const parseList = (val: unknown) => {
+  if (Array.isArray(val)) return val.map(String);
+  if (typeof val !== "string") return [];
+  try {
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return val.split(",").map((s) => s.trim()).filter(Boolean);
+  }
 };
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof (error as ResponseError).message === "string"
-  ) {
-    return (error as ResponseError).message;
-  }
-
-  return "Unknown error";
-}
-
-function getErrorStatus(error: unknown) {
-  if (error instanceof Error && error.name === "ValidationError") {
-    return 400;
-  }
-
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as ResponseError).code === 11000
-  ) {
-    return 409;
-  }
-
-  return 500;
-}
-
-function normalizeListField(event: EventPayload, key: "tags" | "agenda") {
-  const value = event[key];
-
-  if (typeof value !== "string") {
-    return;
-  }
-
-  try {
-    event[key] = JSON.parse(value);
-  } catch {
-    event[key] = value.split(",").map((item) => item.trim());
-  }
-}
-
-function getImageExtension(file: File) {
-  const extensionByType: Record<string, string> = {
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/gif": "gif",
-    "image/webp": "webp",
-    "image/svg+xml": "svg",
-  };
-
-  return extensionByType[file.type] ?? "png";
-}
-
-async function saveImageLocally(file: File) {
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  const fileName = `${randomUUID()}.${getImageExtension(file)}`;
-
-  await mkdir(uploadsDir, { recursive: true });
-  await writeFile(path.join(uploadsDir, fileName), buffer);
-
-  return `/uploads/${fileName}`;
-}
-
-async function uploadImage(file: File) {
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const uploadResult = await new Promise<{ secure_url?: string }>(
-    (resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream(
-          {
-            folder: "DevEvent",
-            resource_type: "image",
-          },
-          (error, result) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-
-            resolve(result ?? {});
-          },
-        )
-        .end(buffer);
-    },
-  );
-
-  if (!uploadResult.secure_url) {
-    throw new Error("Cloudinary upload did not return an image URL");
-  }
-
-  return uploadResult.secure_url;
-}
-
-async function getImageUrl(file: File) {
-  try {
-    return await uploadImage(file);
-  } catch (error) {
-    console.error("Error uploading event image to Cloudinary:", error);
-    return saveImageLocally(file);
-  }
-}
-
 export async function POST(req: NextRequest) {
-  let event: EventPayload;
-  let imageFile: File | null = null;
-
   try {
+    await dbConnect();
     const contentType = req.headers.get("content-type") || "";
+    let eventData: Record<string, any> = {};
+    let imageFile: File | null = null;
 
     if (contentType.includes("application/json")) {
-      event = await req.json();
-    } else if (
-      contentType.includes("multipart/form-data") ||
-      contentType.includes("application/x-www-form-urlencoded")
-    ) {
+      eventData = await req.json();
+    } else if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await req.formData();
-      const eventData = Object.fromEntries(formData.entries());
-      const imageEntry = eventData.image;
-
-      imageFile =
-        imageEntry instanceof File && imageEntry.size > 0 ? imageEntry : null;
+      eventData = Object.fromEntries(formData.entries());
+      if (eventData.image instanceof File && eventData.image.size > 0) {
+        imageFile = eventData.image;
+      }
+      delete eventData.image;
 
       if (eventData.event) {
-        try {
-          event = JSON.parse(eventData.event.toString());
-        } catch (e) {
-          console.error("Error parsing event data:", e);
-          return NextResponse.json(
-            {
-              message: "Event creation failed",
-              error: getErrorMessage(e),
-            },
-            { status: 400 },
-          );
-        }
-      } else {
-        event = { ...eventData };
-        delete event.image;
+        Object.assign(eventData, JSON.parse(eventData.event as string));
+        delete eventData.event;
       }
     } else {
-      return NextResponse.json(
-        {
-          message: "Unsupported Content-Type",
-          error: `Content-Type must be application/json, multipart/form-data, or application/x-www-form-urlencoded. Got: ${contentType}`,
-        },
-        { status: 400 },
-      );
+      return NextResponse.json({ message: "Event creation failed", error: "Unsupported Content-Type" }, { status: 400 });
     }
 
-    if (!event || Object.keys(event).length === 0) {
-      return NextResponse.json(
-        {
-          message: "Event creation failed",
-          error: "Request body or event data is empty",
-        },
-        { status: 400 },
-      );
+    if (!Object.keys(eventData).length) {
+      return NextResponse.json({ message: "Event creation failed", error: "Request body is empty" }, { status: 400 });
     }
 
-    if (!imageFile && typeof event.image !== "string") {
-      return NextResponse.json(
-        {
-          message: "Event creation failed",
-          error: "Image file or image URL is required",
-        },
-        { status: 400 },
-      );
+    if (!imageFile && typeof eventData.image !== "string") {
+      return NextResponse.json({ message: "Event creation failed", error: "Image is required" }, { status: 400 });
     }
 
-    normalizeListField(event, "tags");
-    normalizeListField(event, "agenda");
-
-    await dbConnect();
+    eventData.tags = parseList(eventData.tags);
+    eventData.agenda = parseList(eventData.agenda);
 
     if (imageFile) {
-      try {
-        event.image = await getImageUrl(imageFile);
-      } catch (e) {
-        console.error("Error uploading event image:", e);
-        return NextResponse.json(
-          {
-            message: "Image upload failed",
-            error: getErrorMessage(e),
-          },
-          { status: 502 },
-        );
-      }
+      eventData.image = await uploadImageToCloudinary(imageFile);
     }
 
-    const createdEvent = await Event.create(event);
-
-    return NextResponse.json(
-      {
-        message: "Event created successfully",
-        event: createdEvent,
-      },
-      { status: 201 },
-    );
-  } catch (e) {
-    console.error("Error creating event:", e);
-    const status = getErrorStatus(e);
-
-    return NextResponse.json(
-      {
-        message: "Event creation failed",
-        error: getErrorMessage(e),
-      },
-      { status },
-    );
+    const event = await Event.create(eventData);
+    return NextResponse.json({ message: "Event created successfully", event }, { status: 201 });
+  } catch (error: any) {
+    console.error("Error creating event:", error);
+    const status = error.name === "ValidationError" ? 400 : error.code === 11000 ? 409 : 500;
+    return NextResponse.json({ message: "Event creation failed", error: error.message || "Unknown error" }, { status });
   }
 }
