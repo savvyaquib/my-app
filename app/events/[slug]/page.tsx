@@ -1,15 +1,27 @@
-import {Suspense} from "react";
-import EventDetails from "@/components/EventDetails";
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
 
-const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }>}) => {
-    const slug = params.then((p) => p.slug);
+const API_URL = process.env.NEXT_PUBLIC_URL;
+
+async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
+    const { slug } = await params;
+    const response = await fetch(`${API_URL}/api/events/${slug}`);
+    const { event } = await response.json();
+
+    if (!event) return notFound();
 
     return (
-        <main>
-            <Suspense fallback={<div>Loading...</div>}>
-                <EventDetails params={slug} />
-            </Suspense>
-        </main>
-    )
+        <h1>Event details: <br /> {slug} </h1>
+    );
 }
-export default EventDetailsPage
+
+const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
+    return (
+        <section id="event">
+            <Suspense fallback={<div>Loading event details...</div>}>
+                <EventDetails params={params} />
+            </Suspense>
+        </section>
+    );
+}
+export default EventDetailsPage;

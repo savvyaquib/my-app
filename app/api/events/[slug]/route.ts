@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Event from "@/database/event.model";
 
-export const runtime = "nodejs";
 
 /**
  * GET Handler for fetching a single event by its unique slug.

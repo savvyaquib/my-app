@@ -5,7 +5,6 @@ import { v2 as cloudinary } from "cloudinary";
 
 cloudinary.config({ secure: true });
 
-export const runtime = "nodejs";
 
 async function uploadImageToCloudinary(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
