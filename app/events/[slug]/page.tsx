@@ -29,6 +29,16 @@ const EventAgenda = ({ agendaItems }: { agendaItems: string[] }) => (
   </div>
 );
 
+const EventTags = ({ tags }: { tags: string[] }) => (
+  <div className="flex flex-row gap-1.5 flex-wrap">
+    {tags.map((tag) => (
+      <div className="pill" key={tag}>
+        {tag}
+      </div>
+    ))}
+  </div>
+);
+
 async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const response = await fetch(`${API_URL}/api/events/${slug}`);
@@ -45,10 +55,13 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
       agenda,
       audience,
       tags,
+      organizer,
     },
   } = await response.json();
 
   if (!title) return notFound();
+
+  const bookings = 10;
 
   return (
     <section id="event">
@@ -102,11 +115,27 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
           </section>
 
           <EventAgenda agendaItems={agenda || []} />
+
+          <section className="flex-col-gap-2">
+            <h2>About the Organizer</h2>
+            <p>{organizer}</p>
+          </section>
+
+          <EventTags tags={tags || []} />
         </div>
 
         {/* Right side - Booking form */}
         <aside className="booking">
-          <p className="text-lg font-semibold">Book Event</p>
+          <div className="signup-card">
+            <h2>Book Your Spot</h2>
+            {bookings > 0 ? (
+              <p className="text-sm">
+                Join {bookings} people who have already booked their spot!
+              </p>
+            ) : (
+              <p className="text-sm">Be the first to book your spot!</p>
+            )}
+          </div>
         </aside>
       </div>
     </section>
