@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import { BookEvent } from "@/components/BookEvent";
 
 const API_URL = process.env.NEXT_PUBLIC_URL;
 const EventDetailsItems = ({
@@ -135,6 +136,7 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
             ) : (
               <p className="text-sm">Be the first to book your spot!</p>
             )}
+            <BookEvent />
           </div>
         </aside>
       </div>
