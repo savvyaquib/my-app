@@ -16,7 +16,10 @@ export const getSimilarEventsBySlug = async (slug: string) => {
     const similarEvents = await Event.find({
       _id: { $ne: event._id },
       tags: { $in: event.tags },
-    }).lean();
+    })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .lean();
     
     // Convert ObjectIds to strings to avoid serialization issues
     return JSON.parse(JSON.stringify(similarEvents));
