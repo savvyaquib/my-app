@@ -1,14 +1,9 @@
 import EventCard from "@/components/EventCard";
 import ExploreBtn from "@/components/ExploreBtn";
-import { IEvent } from "@/database";
-import { getAllEvents } from "@/lib/actions/event.actions";
-import { cacheLife } from "next/cache";
+import { events } from "@/lib/constants";
 
-const page = async () => {
-  "use cache";
-  cacheLife('hours')
-  const events = await getAllEvents();
-  
+
+const page = () => {
   return (
     <section>
       <h1 className="text-center">
@@ -23,10 +18,10 @@ const page = async () => {
         <h3>Featured Events</h3>
 
         <ul className="events list-none">
-          {events && events.length > 0 && events.map((event: IEvent) => (
-            <li key={event.slug}>
+          {events.map((event) => (
+            <li key={event.title}>
               <EventCard {...event} />
-            </li>
+            </li> 
           ))}
         </ul>
       </div>
