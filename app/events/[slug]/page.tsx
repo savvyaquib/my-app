@@ -3,10 +3,9 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { BookEvent } from "@/components/BookEvent";
 import { IEvent } from "@/database";
-import { getSimilarEventsBySlug } from "@/lib/actions/event.actions";
+import { getSimilarEventsBySlug, getEventBySlug } from "@/lib/actions/event.actions";
 import EventCard from "@/components/EventCard";
 
-const API_URL = process.env.NEXT_PUBLIC_URL;
 const EventDetailsItems = ({
   icon,
   alt,
@@ -45,25 +44,24 @@ const EventTags = ({ tags }: { tags: string[] }) => (
 
 async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const response = await fetch(`${API_URL}/api/events/${slug}`);
-  const {
-    event: {
-      title,
-      description,
-      image,
-      overview,
-      date,
-      time,
-      location,
-      mode,
-      agenda,
-      audience,
-      tags,
-      organizer,
-    },
-  } = await response.json();
+  const event = await getEventBySlug(slug);
 
-  if (!title) return notFound();
+  if (!event || !event.title) return notFound();
+
+  const {
+    title,
+    description,
+    image,
+    overview,
+    date,
+    time,
+    location,
+    mode,
+    agenda,
+    audience,
+    tags,
+    organizer,
+  } = event;
 
   const bookings = 10;
 
