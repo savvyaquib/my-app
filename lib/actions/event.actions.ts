@@ -2,10 +2,8 @@
 
 import Event from "@/database/event.model";
 import dbConnect from "../mongodb";
-import { connection } from "next/server";
 
 export const getSimilarEventsBySlug = async (slug: string) => {
-  await connection();
   try {
     await dbConnect();
 
@@ -29,7 +27,6 @@ export const getSimilarEventsBySlug = async (slug: string) => {
 };
 
 export const getAllEvents = async () => {
-  await connection();
   try {
     await dbConnect();
     const events = await Event.find().sort({ createdAt: -1 }).lean();
@@ -41,7 +38,6 @@ export const getAllEvents = async () => {
 };
 
 export const getEventBySlug = async (slug: string) => {
-  await connection();
   try {
     await dbConnect();
     const event = await Event.findOne({ slug }).lean();
