@@ -14,11 +14,11 @@ export const createBooking = async ({
 }) => {
   try {
     await dbConnect();
-    const booking = (await Booking.create({ eventId, slug, email })).lean();
+    await Booking.create({ eventId, slug, email });
 
-    return { success: true, booking };
+    return { success: true };
   } catch (error) {
     console.error("Failed to book event", error);
-    return { success: false, error: error };
+    return { success: false };
   }
 };
