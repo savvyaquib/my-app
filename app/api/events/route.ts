@@ -41,11 +41,18 @@ export async function POST(req: NextRequest) {
   try {
     await dbConnect();
     const contentType = req.headers.get("content-type") || "";
-    let eventData: Record<string, any> = {};
+    let eventData: Record<string, unknown> = {};
     let imageFile: File | null = null;
 
     if (contentType.includes("application/json")) {
-      eventData = await req.json();
+      const body: unknown = await req.json();
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return NextResponse.json(
+          { message: "Event creation failed", error: "Request body must be an object" },
+          { status: 400 },
+        );
+      }
+      eventData = body as Record<string, unknown>;
     } else if (
       contentType.includes("multipart/form-data") ||
       contentType.includes("application/x-www-form-urlencoded")
@@ -94,14 +101,18 @@ export async function POST(req: NextRequest) {
       { message: "Event created successfully", event },
       { status: 201 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating event:", error);
+    const dbError =
+      error && typeof error === "object"
+        ? (error as { name?: unknown; code?: unknown; message?: unknown })
+        : {};
     const status =
-      error.name === "ValidationError" ? 400 : error.code === 11000 ? 409 : 500;
+      dbError.name === "ValidationError" ? 400 : dbError.code === 11000 ? 409 : 500;
     return NextResponse.json(
       {
         message: "Event creation failed",
-        error: error.message || "Unknown error",
+        error: typeof dbError.message === "string" ? dbError.message : "Unknown error",
       },
       { status },
     );
@@ -116,10 +127,11 @@ export async function GET() {
       { message: "Events fetched successfully", events },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching events:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: error.message || "Unknown error" },
+      { error: errorMessage },
       { status: 500 },
     );
   }
