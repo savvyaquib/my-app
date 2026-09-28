@@ -7,18 +7,37 @@ export const getSimilarEventsBySlug = async (slug: string) => {
   try {
     await dbConnect();
 
-    const event = await Event.findOne({ slug });
+    // Single aggregation pipeline instead of two sequential queries
+    const similarEvents = await Event.aggregate([
+      // Stage 1: Find the source event by slug
+      { $match: { slug } },
+      // Stage 2: Lookup similar events that share tags, excluding the source
+      {
+        $lookup: {
+          from: "events",
+          let: { sourceTags: "$tags", sourceId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $ne: ["$_id", "$$sourceId"] },
+                    { $gt: [{ $size: { $setIntersection: ["$tags", "$$sourceTags"] } }, 0] },
+                  ],
+                },
+              },
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 3 },
+          ],
+          as: "similar",
+        },
+      },
+      // Stage 3: Unwind to get individual similar events
+      { $unwind: "$similar" },
+      { $replaceRoot: { newRoot: "$similar" } },
+    ]);
 
-    if (!event) return [];
-
-    const similarEvents = await Event.find({
-      _id: { $ne: event._id },
-      tags: { $in: event.tags },
-    })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .lean();
-    
     // Convert ObjectIds to strings to avoid serialization issues
     return JSON.parse(JSON.stringify(similarEvents));
   } catch {

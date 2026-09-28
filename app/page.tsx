@@ -6,9 +6,9 @@ import { cacheLife } from "next/cache";
 
 const page = async () => {
   "use cache";
-  cacheLife('hours')
+  cacheLife("hours");
   const events = await getAllEvents();
-  
+
   return (
     <section>
       <h1 className="text-center">
@@ -23,11 +23,13 @@ const page = async () => {
         <h3>Featured Events</h3>
 
         <ul className="events list-none">
-          {events && events.length > 0 && events.map((event: IEvent) => (
-            <li key={event.slug}>
-              <EventCard {...event} />
-            </li>
-          ))}
+          {events &&
+            events.length > 0 &&
+            events.map((event: IEvent) => (
+              <li key={event.slug}>
+                <EventCard {...event} />
+              </li>
+            ))}
         </ul>
       </div>
     </section>
