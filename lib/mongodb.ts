@@ -56,9 +56,7 @@ async function dbConnect(): Promise<typeof mongoose> {
       connectTimeoutMS: 5000, // Timeout for initial socket connection (default: 30000)
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongooseInstance) => {
-      return mongooseInstance;
-    });
+    cached.promise = mongoose.connect(MONGODB_URI!, opts);
   }
 
   try {

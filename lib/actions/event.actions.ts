@@ -40,7 +40,8 @@ export const getSimilarEventsBySlug = async (slug: string) => {
 
     // Convert ObjectIds to strings to avoid serialization issues
     return JSON.parse(JSON.stringify(similarEvents));
-  } catch {
+  } catch (error) {
+    console.error(`Error fetching similar events for slug (${slug}):`, error);
     return [];
   }
 };

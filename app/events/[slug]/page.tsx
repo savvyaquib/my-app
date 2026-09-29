@@ -47,7 +47,10 @@ const EventTags = ({ tags }: { tags: string[] }) => (
 
 async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const event = await getEventBySlug(slug);
+  const [event, similarEvents] = await Promise.all([
+    getEventBySlug(slug),
+    getSimilarEventsBySlug(slug),
+  ]);
 
   if (!event || !event.title) return notFound();
 
@@ -66,10 +69,6 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
     organizer,
   } = event;
 
-  const bookings = 10;
-
-  const similarEvents: IEvent[] = await getSimilarEventsBySlug(slug);
-
   return (
     <section id="event">
       <div className="header">
@@ -81,7 +80,7 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
         <div className="content">
           <Image
             src={image}
-            alt="Event banner"
+            alt={`${title} banner`}
             width={800}
             height={800}
             className="banner"
@@ -95,28 +94,28 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
           <section className="flex-col-gap-2">
             <h2>Event Details</h2>
             <EventDetailsItems
-              icon={"/icons/calendar.svg"}
-              alt={"Date"}
+              icon="/icons/calendar.svg"
+              alt="Date"
               label={date}
             />
             <EventDetailsItems
-              icon={"/icons/clock.svg"}
-              alt={"Time"}
+              icon="/icons/clock.svg"
+              alt="Time"
               label={time}
             />
             <EventDetailsItems
-              icon={"/icons/pin.svg"}
-              alt={"Location"}
+              icon="/icons/pin.svg"
+              alt="Location"
               label={location}
             />
             <EventDetailsItems
-              icon={"/icons/audience.svg"}
-              alt={"Audience"}
+              icon="/icons/audience.svg"
+              alt="Audience"
               label={audience}
             />
             <EventDetailsItems
-              icon={"/icons/mode.svg"}
-              alt={"Mode"}
+              icon="/icons/mode.svg"
+              alt="Mode"
               label={mode}
             />
           </section>
@@ -135,26 +134,20 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
         <aside className="booking">
           <div className="signup-card">
             <h2>Book Your Spot</h2>
-            {bookings > 0 ? (
-              <p className="text-sm">
-                Join {bookings} people who have already booked their spot!
-              </p>
-            ) : (
-              <p className="text-sm">Be the first to book your spot!</p>
-            )}
             <BookEvent eventId={event._id} slug={event.slug} />
           </div>
         </aside>
       </div>
-      <div className="flex w-full flex-col gap-4 pt-20">
-        <h2>Similar Events</h2>
-        <div className="events">
-          {similarEvents.length > 0 &&
-            similarEvents.map((similarEvent: IEvent) => (
+      {similarEvents.length > 0 && (
+        <div className="flex w-full flex-col gap-4 pt-20">
+          <h2>Similar Events</h2>
+          <div className="events">
+            {similarEvents.map((similarEvent: IEvent) => (
               <EventCard key={similarEvent.slug} {...similarEvent} />
             ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -165,11 +158,9 @@ const EventDetailsPage = async ({
   params: Promise<{ slug: string }>;
 }) => {
   return (
-    <section id="event">
-      <Suspense fallback={<div>Loading event details...</div>}>
-        <EventDetails params={params} />
-      </Suspense>
-    </section>
+    <Suspense fallback={<div>Loading event details...</div>}>
+      <EventDetails params={params} />
+    </Suspense>
   );
 };
 export default EventDetailsPage;

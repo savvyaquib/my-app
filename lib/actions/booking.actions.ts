@@ -5,16 +5,14 @@ import Booking from "@/database/booking.model";
 
 export const createBooking = async ({
   eventId,
-  slug,
   email,
 }: {
   eventId: string;
-  slug: string;
   email: string;
 }) => {
   try {
     await dbConnect();
-    await Booking.create({ eventId, slug, email });
+    await Booking.create({ eventId, email });
 
     return { success: true };
   } catch (error) {
@@ -22,4 +20,3 @@ export const createBooking = async ({
     return { success: false };
   }
 };
-

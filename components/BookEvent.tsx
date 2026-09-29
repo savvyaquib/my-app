@@ -1,7 +1,6 @@
 "use client";
 import { createBooking } from "@/lib/actions/booking.actions";
-import { useState } from "react";
-import React from "react";
+import { type FormEvent, useState } from "react";
 import posthog from "posthog-js";
 
 export const BookEvent = ({
@@ -14,10 +13,10 @@ export const BookEvent = ({
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
-    const { success } = await createBooking({ eventId, slug, email });
+    const { success } = await createBooking({ eventId, email });
 
     if (success) {
       setSubmitted(true);
@@ -42,7 +41,7 @@ export const BookEvent = ({
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email addresss"
+              placeholder="Enter your email address"
               required
             />
           </div>
